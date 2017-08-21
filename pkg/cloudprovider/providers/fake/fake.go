@@ -234,6 +234,18 @@ func (f *FakeCloud) InstanceTypeByProviderID(providerID string) (string, error) 
 	return f.InstanceTypes[types.NodeName(providerID)], nil
 }
 
+// InstanceExists returns true if the instance with the given node name still exists and is running.
+func (f *FakeCloud) InstanceExists(nodeName types.NodeName) (bool, error) {
+	f.addCall("instance-exists")
+	return f.Exists, f.Err
+}
+
+// InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
+func (f *FakeCloud) InstanceExistsByProviderID(providerID string) (bool, error) {
+	f.addCall("instance-exists-by-provider-id")
+	return f.Exists, f.Err
+}
+
 // List is a test-spy implementation of Instances.List.
 // It adds an entry "list" into the internal method call record.
 func (f *FakeCloud) List(filter string) ([]types.NodeName, error) {

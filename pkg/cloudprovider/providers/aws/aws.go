@@ -1101,6 +1101,16 @@ func (c *Cloud) ExternalID(nodeName types.NodeName) (string, error) {
 	return orEmpty(instance.InstanceId), nil
 }
 
+// InstanceExists returns true if the instance with the given node name still exists and is running.
+func (c *Cloud) InstanceExists(nodeName types.NodeName) (bool, error) {
+	return false, errors.New("unimplemented")
+}
+
+// InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
+func (c *Cloud) InstanceExistsByProviderID(providerID string) (bool, error) {
+	return false, errors.New("unimplemented")
+}
+
 // InstanceID returns the cloud provider ID of the node with the specified nodeName.
 func (c *Cloud) InstanceID(nodeName types.NodeName) (string, error) {
 	// In the future it is possible to also return an endpoint as:

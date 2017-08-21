@@ -470,6 +470,16 @@ func (pc *PCCloud) ExternalID(nodeName k8stypes.NodeName) (string, error) {
 	}
 }
 
+// InstanceExists returns true if the instance with the given node name still exists and is running.
+func (pc *PCCLoud) InstanceExists(nodeName types.NodeName) (bool, error) {
+	return false, errors.New("unimplemented")
+}
+
+// InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
+func (pc *PCCLoud) InstanceExistsByProviderID(providerID string) (bool, error) {
+	return false, errors.New("unimplemented")
+}
+
 // InstanceID returns the cloud provider ID of the specified instance.
 func (pc *PCCloud) InstanceID(nodeName k8stypes.NodeName) (string, error) {
 	name := string(nodeName)

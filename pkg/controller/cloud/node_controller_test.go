@@ -105,9 +105,12 @@ func TestNodeDeleted(t *testing.T) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	cloudNodeController := &CloudNodeController{
-		kubeClient:                fnh,
-		nodeInformer:              factory.Core().V1().Nodes(),
-		cloud:                     &fakecloud.FakeCloud{Err: cloudprovider.InstanceNotFound},
+		kubeClient:   fnh,
+		nodeInformer: factory.Core().V1().Nodes(),
+		cloud: &fakecloud.FakeCloud{
+			Exists: false,
+			Err:    nil,
+		},
 		nodeMonitorPeriod:         1 * time.Second,
 		recorder:                  eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "cloud-controller-manager"}),
 		nodeStatusUpdateFrequency: 1 * time.Second,

@@ -436,6 +436,16 @@ func (i *Instances) ExternalID(nodeName types.NodeName) (string, error) {
 	return probeInstanceID(i.compute, serverName)
 }
 
+// InstanceExists returns true if the instance with the given node name still exists and is running.
+func (i *Instances) InstanceExists(nodeName types.NodeName) (bool, error) {
+	return false, errors.New("unimplemented")
+}
+
+// InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
+func (i *Instances) InstanceExistsByProviderID(providerID string) (bool, error) {
+	return false, errors.New("unimplemented")
+}
+
 // InstanceID returns the cloud provider ID of the kubelet's instance.
 func (rs *Rackspace) InstanceID() (string, error) {
 	return readInstanceID()
