@@ -1063,6 +1063,7 @@
 		},
 		{
 			"ImportPath": "github.com/docker/libnetwork/ipvs",
+			"Comment": "v0.8.0-dev.2-840-gc3393f1",
 			"Rev": "c3393f1d3e1ba69b596eca45a9f1da9398e17ca5"
 		},
 		{
