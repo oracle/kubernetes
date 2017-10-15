@@ -287,6 +287,7 @@ func IsServiceIPRequested(service *api.Service) bool {
 
 var standardFinalizers = sets.NewString(
 	string(api.FinalizerKubernetes),
+	string(api.FinalizerServiceController),
 	metav1.FinalizerOrphanDependents,
 	metav1.FinalizerDeleteDependents,
 )

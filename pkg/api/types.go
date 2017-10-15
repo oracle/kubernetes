@@ -3393,7 +3393,8 @@ type FinalizerName string
 // These are internal finalizer values to Kubernetes, must be qualified name unless defined here or
 // in metav1.
 const (
-	FinalizerKubernetes FinalizerName = "kubernetes"
+	FinalizerKubernetes        FinalizerName = "kubernetes"
+	FinalizerServiceController               = "service-controler"
 )
 
 // NamespaceStatus is information about the current status of a Namespace.
