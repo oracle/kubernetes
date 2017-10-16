@@ -18,8 +18,6 @@ package service
 
 import (
 	"fmt"
-	"sort"
-	"sync"
 	"time"
 
 	"reflect"
@@ -72,18 +70,7 @@ const (
 	LabelNodeRoleExcludeBalancer = "alpha.node.role.kubernetes.io/exclude-balancer"
 )
 
-type cachedService struct {
-	// The cached state of the service
-	state *v1.Service
-	// Controls error back-off
-	lastRetryDelay time.Duration
-}
-
-type serviceCache struct {
-	mu         sync.Mutex // protects serviceMap
-	serviceMap map[string]*cachedService
-}
-
+// ServiceController ensures that the cloud provider resources are in sync with the service resources.
 type ServiceController struct {
 	cloud               cloudprovider.Interface
 	knownHosts          []*v1.Node
@@ -215,12 +202,12 @@ func (s *ServiceController) worker() {
 
 func (s *ServiceController) init() error {
 	if s.cloud == nil {
-		return fmt.Errorf("WARNING: no cloud provider provided, services of type LoadBalancer will fail.")
+		return fmt.Errorf("WARNING: no cloud provider provided, services of type LoadBalancer will fail")
 	}
 
 	balancer, ok := s.cloud.LoadBalancer()
 	if !ok {
-		return fmt.Errorf("the cloud provider does not support external load balancers.")
+		return fmt.Errorf("the cloud provider does not support external load balancers")
 	}
 	s.balancer = balancer
 
@@ -230,18 +217,18 @@ func (s *ServiceController) init() error {
 // Returns an error if processing the service update failed, along with a time.Duration
 // indicating whether processing should be retried; zero means no-retry; otherwise
 // we should retry in that Duration.
-func (s *ServiceController) processServiceUpdate(cachedService *cachedService, service *v1.Service, key string) (error, time.Duration) {
+func (s *ServiceController) processServiceUpdate(cachedService *cachedService, service *v1.Service, key string) (time.Duration, error) {
 	if cachedService.state != nil {
 		if cachedService.state.UID != service.UID {
-			err, retry := s.processLoadBalancerDelete(cachedService, key)
+			retry, err := s.processLoadBalancerDelete(cachedService, key)
 			if err != nil {
-				return err, retry
+				return retry, err
 			}
 		}
 	}
 	// cache the service, we need the info for service deletion
 	cachedService.state = service
-	err, retry := s.createLoadBalancerIfNeeded(key, service)
+	retry, err := s.createLoadBalancerIfNeeded(key, service)
 	if err != nil {
 		message := "Error creating load balancer"
 		if retry {
@@ -252,7 +239,7 @@ func (s *ServiceController) processServiceUpdate(cachedService *cachedService, s
 		message += err.Error()
 		s.eventRecorder.Event(service, v1.EventTypeWarning, "CreatingLoadBalancerFailed", message)
 
-		return err, cachedService.nextRetryDelay()
+		return cachedService.nextRetryDelay(), err
 	}
 	// Always update the cache upon success.
 	// NOTE: Since we update the cached service if and only if we successfully
@@ -261,12 +248,12 @@ func (s *ServiceController) processServiceUpdate(cachedService *cachedService, s
 	s.cache.set(key, cachedService)
 
 	cachedService.resetRetryDelay()
-	return nil, doNotRetry
+	return doNotRetry, nil
 }
 
 // Returns whatever error occurred along with a boolean indicator of whether it
 // should be retried.
-func (s *ServiceController) createLoadBalancerIfNeeded(key string, service *v1.Service) (error, bool) {
+func (s *ServiceController) createLoadBalancerIfNeeded(key string, service *v1.Service) (bool, error) {
 	// Note: It is safe to just call EnsureLoadBalancer.  But, on some clouds that requires a delete & create,
 	// which may involve service interruption.  Also, we would like user-friendly events.
 
@@ -278,13 +265,13 @@ func (s *ServiceController) createLoadBalancerIfNeeded(key string, service *v1.S
 	if !wantsLoadBalancer(service) {
 		_, exists, err := s.balancer.GetLoadBalancer(s.clusterName, service)
 		if err != nil {
-			return fmt.Errorf("Error getting LB for service %s: %v", key, err), retryable
+			return retryable, fmt.Errorf("Error getting LB for service %s: %v", key, err)
 		}
 		if exists {
 			glog.Infof("Deleting existing load balancer for service %s that no longer needs a load balancer.", key)
 			s.eventRecorder.Event(service, v1.EventTypeNormal, "DeletingLoadBalancer", "Deleting load balancer")
 			if err := s.balancer.EnsureLoadBalancerDeleted(s.clusterName, service); err != nil {
-				return err, retryable
+				return retryable, err
 			}
 			s.eventRecorder.Event(service, v1.EventTypeNormal, "DeletedLoadBalancer", "Deleted load balancer")
 		}
@@ -298,7 +285,7 @@ func (s *ServiceController) createLoadBalancerIfNeeded(key string, service *v1.S
 		s.eventRecorder.Event(service, v1.EventTypeNormal, "EnsuringLoadBalancer", "Ensuring load balancer")
 		newState, err = s.ensureLoadBalancer(service)
 		if err != nil {
-			return fmt.Errorf("Failed to ensure load balancer for service %s: %v", key, err), retryable
+			return retryable, fmt.Errorf("Failed to ensure load balancer for service %s: %v", key, err)
 		}
 		s.eventRecorder.Event(service, v1.EventTypeNormal, "EnsuredLoadBalancer", "Ensured load balancer")
 	}
@@ -313,13 +300,13 @@ func (s *ServiceController) createLoadBalancerIfNeeded(key string, service *v1.S
 		service.Status.LoadBalancer = *newState
 
 		if err := s.persistUpdate(service); err != nil {
-			return fmt.Errorf("Failed to persist updated status to apiserver, even after retries. Giving up: %v", err), notRetryable
+			return notRetryable, fmt.Errorf("Failed to persist updated status to apiserver, even after retries. Giving up: %v", err)
 		}
 	} else {
 		glog.V(2).Infof("Not persisting unchanged LoadBalancerStatus for service %s to registry.", key)
 	}
 
-	return nil, notRetryable
+	return notRetryable, nil
 }
 
 func (s *ServiceController) persistUpdate(service *v1.Service) error {
@@ -360,70 +347,6 @@ func (s *ServiceController) ensureLoadBalancer(service *v1.Service) (*v1.LoadBal
 	// - Not all cloud providers support all protocols and the next step is expected to return
 	//   an error for unsupported protocols
 	return s.balancer.EnsureLoadBalancer(s.clusterName, service, nodes)
-}
-
-// ListKeys implements the interface required by DeltaFIFO to list the keys we
-// already know about.
-func (s *serviceCache) ListKeys() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	keys := make([]string, 0, len(s.serviceMap))
-	for k := range s.serviceMap {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-// GetByKey returns the value stored in the serviceMap under the given key
-func (s *serviceCache) GetByKey(key string) (interface{}, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if v, ok := s.serviceMap[key]; ok {
-		return v, true, nil
-	}
-	return nil, false, nil
-}
-
-// ListKeys implements the interface required by DeltaFIFO to list the keys we
-// already know about.
-func (s *serviceCache) allServices() []*v1.Service {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	services := make([]*v1.Service, 0, len(s.serviceMap))
-	for _, v := range s.serviceMap {
-		services = append(services, v.state)
-	}
-	return services
-}
-
-func (s *serviceCache) get(serviceName string) (*cachedService, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	service, ok := s.serviceMap[serviceName]
-	return service, ok
-}
-
-func (s *serviceCache) getOrCreate(serviceName string) *cachedService {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	service, ok := s.serviceMap[serviceName]
-	if !ok {
-		service = &cachedService{}
-		s.serviceMap[serviceName] = service
-	}
-	return service
-}
-
-func (s *serviceCache) set(serviceName string, service *cachedService) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.serviceMap[serviceName] = service
-}
-
-func (s *serviceCache) delete(serviceName string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.serviceMap, serviceName)
 }
 
 func (s *ServiceController) needsUpdate(oldService *v1.Service, newService *v1.Service) bool {
@@ -486,144 +409,6 @@ func (s *ServiceController) needsUpdate(oldService *v1.Service, newService *v1.S
 
 func (s *ServiceController) loadBalancerName(service *v1.Service) string {
 	return cloudprovider.GetLoadBalancerName(service)
-}
-
-func getPortsForLB(service *v1.Service) ([]*v1.ServicePort, error) {
-	var protocol v1.Protocol
-
-	ports := []*v1.ServicePort{}
-	for i := range service.Spec.Ports {
-		sp := &service.Spec.Ports[i]
-		// The check on protocol was removed here.  The cloud provider itself is now responsible for all protocol validation
-		ports = append(ports, sp)
-		if protocol == "" {
-			protocol = sp.Protocol
-		} else if protocol != sp.Protocol && wantsLoadBalancer(service) {
-			// TODO:  Convert error messages to use event recorder
-			return nil, fmt.Errorf("mixed protocol external load balancers are not supported.")
-		}
-	}
-	return ports, nil
-}
-
-func portsEqualForLB(x, y *v1.Service) bool {
-	xPorts, err := getPortsForLB(x)
-	if err != nil {
-		return false
-	}
-	yPorts, err := getPortsForLB(y)
-	if err != nil {
-		return false
-	}
-	return portSlicesEqualForLB(xPorts, yPorts)
-}
-
-func portSlicesEqualForLB(x, y []*v1.ServicePort) bool {
-	if len(x) != len(y) {
-		return false
-	}
-
-	for i := range x {
-		if !portEqualForLB(x[i], y[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func portEqualForLB(x, y *v1.ServicePort) bool {
-	// TODO: Should we check name?  (In theory, an LB could expose it)
-	if x.Name != y.Name {
-		return false
-	}
-
-	if x.Protocol != y.Protocol {
-		return false
-	}
-
-	if x.Port != y.Port {
-		return false
-	}
-
-	if x.NodePort != y.NodePort {
-		return false
-	}
-
-	// We don't check TargetPort; that is not relevant for load balancing
-	// TODO: Should we blank it out?  Or just check it anyway?
-
-	return true
-}
-
-func nodeNames(nodes []*v1.Node) []string {
-	ret := make([]string, len(nodes))
-	for i, node := range nodes {
-		ret[i] = node.Name
-	}
-	return ret
-}
-
-func nodeSlicesEqualForLB(x, y []*v1.Node) bool {
-	if len(x) != len(y) {
-		return false
-	}
-	return stringSlicesEqual(nodeNames(x), nodeNames(y))
-}
-
-func stringSlicesEqual(x, y []string) bool {
-	if len(x) != len(y) {
-		return false
-	}
-	if !sort.StringsAreSorted(x) {
-		sort.Strings(x)
-	}
-	if !sort.StringsAreSorted(y) {
-		sort.Strings(y)
-	}
-	for i := range x {
-		if x[i] != y[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func includeNodeFromNodeList(node *v1.Node) bool {
-	return !node.Spec.Unschedulable
-}
-
-func getNodeConditionPredicate() corelisters.NodeConditionPredicate {
-	return func(node *v1.Node) bool {
-		// We add the master to the node list, but its unschedulable.  So we use this to filter
-		// the master.
-		if node.Spec.Unschedulable {
-			return false
-		}
-
-		// As of 1.6, we will taint the master, but not necessarily mark it unschedulable.
-		// Recognize nodes labeled as master, and filter them also, as we were doing previously.
-		if _, hasMasterRoleLabel := node.Labels[LabelNodeRoleMaster]; hasMasterRoleLabel {
-			return false
-		}
-
-		if _, hasExcludeBalancerLabel := node.Labels[LabelNodeRoleExcludeBalancer]; hasExcludeBalancerLabel {
-			return false
-		}
-
-		// If we have no info, don't accept
-		if len(node.Status.Conditions) == 0 {
-			return false
-		}
-		for _, cond := range node.Status.Conditions {
-			// We consider the node for load balancing only when its NodeReady condition status
-			// is ConditionTrue
-			if cond.Type == v1.NodeReady && cond.Status != v1.ConditionTrue {
-				glog.V(4).Infof("Ignoring node %v with %v condition status %v", node.Name, cond.Type, cond.Status)
-				return false
-			}
-		}
-		return true
-	}
 }
 
 // nodeSyncLoop handles updating the hosts pointed to by all load
@@ -698,32 +483,6 @@ func (s *ServiceController) lockedUpdateLoadBalancerHosts(service *v1.Service, h
 	return err
 }
 
-func wantsLoadBalancer(service *v1.Service) bool {
-	return service.Spec.Type == v1.ServiceTypeLoadBalancer
-}
-
-func loadBalancerIPsAreEqual(oldService, newService *v1.Service) bool {
-	return oldService.Spec.LoadBalancerIP == newService.Spec.LoadBalancerIP
-}
-
-// Computes the next retry, using exponential backoff
-// mutex must be held.
-func (s *cachedService) nextRetryDelay() time.Duration {
-	s.lastRetryDelay = s.lastRetryDelay * 2
-	if s.lastRetryDelay < minRetryDelay {
-		s.lastRetryDelay = minRetryDelay
-	}
-	if s.lastRetryDelay > maxRetryDelay {
-		s.lastRetryDelay = maxRetryDelay
-	}
-	return s.lastRetryDelay
-}
-
-// Resets the retry exponential backoff.  mutex must be held.
-func (s *cachedService) resetRetryDelay() {
-	s.lastRetryDelay = time.Duration(0)
-}
-
 // syncService will sync the Service with the given key if it has had its expectations fulfilled,
 // meaning it did not expect to see any more of its pods created or deleted. This function is not meant to be
 // invoked concurrently with the same key.
@@ -746,14 +505,14 @@ func (s *ServiceController) syncService(key string) error {
 	case errors.IsNotFound(err):
 		// service absence in store means watcher caught the deletion, ensure LB info is cleaned
 		glog.Infof("Service has been deleted %v", key)
-		err, retryDelay = s.processServiceDeletion(key)
+		retryDelay, err = s.processServiceDeletion(key)
 	case err != nil:
 		glog.Infof("Unable to retrieve service %v from store: %v", key, err)
 		s.workingQueue.Add(key)
 		return err
 	default:
 		cachedService = s.cache.getOrCreate(key)
-		err, retryDelay = s.processServiceUpdate(cachedService, service, key)
+		retryDelay, err = s.processServiceUpdate(cachedService, service, key)
 	}
 
 	if retryDelay != 0 {
@@ -774,30 +533,30 @@ func (s *ServiceController) syncService(key string) error {
 // Returns an error if processing the service deletion failed, along with a time.Duration
 // indicating whether processing should be retried; zero means no-retry; otherwise
 // we should retry after that Duration.
-func (s *ServiceController) processServiceDeletion(key string) (error, time.Duration) {
+func (s *ServiceController) processServiceDeletion(key string) (time.Duration, error) {
 	cachedService, ok := s.cache.get(key)
 	if !ok {
-		return fmt.Errorf("Service %s not in cache even though the watcher thought it was. Ignoring the deletion.", key), doNotRetry
+		return doNotRetry, fmt.Errorf("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", key)
 	}
 	return s.processLoadBalancerDelete(cachedService, key)
 }
 
-func (s *ServiceController) processLoadBalancerDelete(cachedService *cachedService, key string) (error, time.Duration) {
+func (s *ServiceController) processLoadBalancerDelete(cachedService *cachedService, key string) (time.Duration, error) {
 	service := cachedService.state
 	// delete load balancer info only if the service type is LoadBalancer
 	if !wantsLoadBalancer(service) {
-		return nil, doNotRetry
+		return doNotRetry, nil
 	}
 	s.eventRecorder.Event(service, v1.EventTypeNormal, "DeletingLoadBalancer", "Deleting load balancer")
 	err := s.balancer.EnsureLoadBalancerDeleted(s.clusterName, service)
 	if err != nil {
 		message := "Error deleting load balancer (will retry): " + err.Error()
 		s.eventRecorder.Event(service, v1.EventTypeWarning, "DeletingLoadBalancerFailed", message)
-		return err, cachedService.nextRetryDelay()
+		return cachedService.nextRetryDelay(), err
 	}
 	s.eventRecorder.Event(service, v1.EventTypeNormal, "DeletedLoadBalancer", "Deleted load balancer")
 	s.cache.delete(key)
 
 	cachedService.resetRetryDelay()
-	return nil, doNotRetry
+	return doNotRetry, nil
 }
