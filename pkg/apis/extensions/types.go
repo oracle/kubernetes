@@ -878,6 +878,14 @@ type AllowedHostPath struct {
 	// `/foo` would allow `/foo`, `/foo/` and `/foo/bar`
 	// `/foo` would not allow `/food` or `/etc/foo`
 	PathPrefix string
+
+	// ReadOnly when set to true will force volumes matching the path prefix to run as read-only.
+	// If the container specifically requests to run with a non-read only volume that matches the path prefix
+	// then the PSP should deny the pod.
+	// If set to false the container may run with a read-only root volume if it wishes but it
+	// will not be forced to.
+	// +optional
+	ReadOnly bool
 }
 
 // HostPortRange defines a range of host ports that will be enabled by a policy

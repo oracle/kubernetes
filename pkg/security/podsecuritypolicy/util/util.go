@@ -173,25 +173,16 @@ func GroupFallsInRange(id int64, rng extensions.GroupIDRange) bool {
 	return id >= rng.Min && id <= rng.Max
 }
 
-// AllowsHostVolumePath is a utility for checking if a PSP allows the host volume path.
-// This only checks the path. You should still check to make sure the host volume fs type is allowed.
-func AllowsHostVolumePath(psp *extensions.PodSecurityPolicy, hostPath string) bool {
-	if psp == nil {
-		return false
-	}
-
-	// If no allowed paths are specified then allow any path
-	if len(psp.Spec.AllowedHostPaths) == 0 {
-		return true
-	}
-
-	for _, allowedPath := range psp.Spec.AllowedHostPaths {
+// GetAllowedHostPath is a utility for finding the AllowedHostPath that matches the given hostPath, if applicable.
+// If no AllowedHostPath is found then nil will be returned and that indicates the hostPath is not allowed.
+func GetAllowedHostPath(allowedHostPaths []extensions.AllowedHostPath, hostPath string) *extensions.AllowedHostPath {
+	for _, allowedPath := range allowedHostPaths {
 		if hasPathPrefix(hostPath, allowedPath.PathPrefix) {
-			return true
+			return &allowedPath
 		}
 	}
 
-	return false
+	return nil
 }
 
 // hasPathPrefix returns true if the string matches pathPrefix exactly, or if is prefixed with pathPrefix at a path segment boundary

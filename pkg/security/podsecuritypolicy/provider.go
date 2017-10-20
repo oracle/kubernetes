@@ -229,10 +229,28 @@ func (s *simpleProvider) ValidatePodSecurityContext(pod *api.Pod, fldPath *field
 			}
 
 			if fsType == extensions.HostPath {
-				if !psputil.AllowsHostVolumePath(s.psp, v.HostPath.Path) {
+				if len(s.psp.Spec.AllowedHostPaths) == 0 {
+					// If no allowed paths are specified then allow any path
+					// since host path volumes are allowed.
+					continue
+				}
+
+				allowedHostPath := psputil.GetAllowedHostPath(s.psp.Spec.AllowedHostPaths, v.HostPath.Path)
+				if allowedHostPath == nil {
 					allErrs = append(allErrs, field.Invalid(
 						field.NewPath("spec", "volumes").Index(i).Child("hostPath", "pathPrefix"), v.HostPath.Path,
 						fmt.Sprintf("is not allowed to be used")))
+					continue
+				}
+
+				if allowedHostPath.ReadOnly {
+					for cIdx, c := range pod.Spec.InitContainers {
+						allErrs = append(allErrs, s.hasReadOnlyContainerVolumeMount(&c, v.Name, field.NewPath("spec", "initContainers").Index(cIdx))...)
+					}
+
+					for cIdx, c := range pod.Spec.Containers {
+						allErrs = append(allErrs, s.hasReadOnlyContainerVolumeMount(&c, v.Name, field.NewPath("spec", "containers").Index(cIdx))...)
+					}
 				}
 			}
 
@@ -340,6 +358,19 @@ func (s *simpleProvider) isValidHostPort(port int32) bool {
 		}
 	}
 	return false
+}
+
+// hasReadOnlyContainerVolumeMount checks whether the containers volume with the given name is read only.
+func (s *simpleProvider) hasReadOnlyContainerVolumeMount(container *api.Container, volumeName string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for cvIdx, cv := range container.VolumeMounts {
+		if volumeName == cv.Name && !cv.ReadOnly {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("volumeMounts").Index(cvIdx), cv.Name,
+				fmt.Sprintf("must be read only")))
+		}
+	}
+	return allErrs
 }
 
 // Get the name of the PSP that this provider was initialized with.

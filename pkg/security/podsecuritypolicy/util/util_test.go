@@ -103,94 +103,69 @@ func TestPSPAllowsFSType(t *testing.T) {
 	}
 }
 
-func TestAllowsHostVolumePath(t *testing.T) {
+func TestGetAllowedHostPath(t *testing.T) {
 	tests := map[string]struct {
-		psp    *extensions.PodSecurityPolicy
-		path   string
-		allows bool
+		allowedHostPaths []extensions.AllowedHostPath
+		path             string
+		expected         *extensions.AllowedHostPath
 	}{
-		"nil psp": {
-			psp:    nil,
-			path:   "/test",
-			allows: false,
-		},
-		"empty allowed paths": {
-			psp:    &extensions.PodSecurityPolicy{},
-			path:   "/test",
-			allows: true,
-		},
+		// TODO: validate empty case
 		"non-matching": {
-			psp: &extensions.PodSecurityPolicy{
-				Spec: extensions.PodSecurityPolicySpec{
-					AllowedHostPaths: []extensions.AllowedHostPath{
-						{PathPrefix: "/foo"},
-					},
-				},
+			allowedHostPaths: []extensions.AllowedHostPath{
+				{PathPrefix: "/foo"},
 			},
-			path:   "/foobar",
-			allows: false,
+			path:     "/foobar",
+			expected: nil,
 		},
 		"match on direct match": {
-			psp: &extensions.PodSecurityPolicy{
-				Spec: extensions.PodSecurityPolicySpec{
-					AllowedHostPaths: []extensions.AllowedHostPath{
-						{PathPrefix: "/foo"},
-					},
-				},
+			allowedHostPaths: []extensions.AllowedHostPath{
+				{PathPrefix: "/foo"},
 			},
-			path:   "/foo",
-			allows: true,
+			path: "/foo",
+			expected: &extensions.AllowedHostPath{
+				PathPrefix: "/foo",
+			},
 		},
 		"match with trailing slash on host path": {
-			psp: &extensions.PodSecurityPolicy{
-				Spec: extensions.PodSecurityPolicySpec{
-					AllowedHostPaths: []extensions.AllowedHostPath{
-						{PathPrefix: "/foo"},
-					},
-				},
+			allowedHostPaths: []extensions.AllowedHostPath{
+				{PathPrefix: "/foo"},
 			},
-			path:   "/foo/",
-			allows: true,
+			path: "/foo/",
+			expected: &extensions.AllowedHostPath{
+				PathPrefix: "/foo",
+			},
 		},
 		"match with trailing slash on allowed path": {
-			psp: &extensions.PodSecurityPolicy{
-				Spec: extensions.PodSecurityPolicySpec{
-					AllowedHostPaths: []extensions.AllowedHostPath{
-						{PathPrefix: "/foo/"},
-					},
-				},
+			allowedHostPaths: []extensions.AllowedHostPath{
+				{PathPrefix: "/foo/"},
 			},
-			path:   "/foo",
-			allows: true,
+			path: "/foo",
+			expected: &extensions.AllowedHostPath{
+				PathPrefix: "/foo/",
+			},
 		},
 		"match child directory": {
-			psp: &extensions.PodSecurityPolicy{
-				Spec: extensions.PodSecurityPolicySpec{
-					AllowedHostPaths: []extensions.AllowedHostPath{
-						{PathPrefix: "/foo/"},
-					},
-				},
+			allowedHostPaths: []extensions.AllowedHostPath{
+				{PathPrefix: "/foo/"},
 			},
-			path:   "/foo/bar",
-			allows: true,
+			path: "/foo/bar",
+			expected: &extensions.AllowedHostPath{
+				PathPrefix: "/foo/",
+			},
 		},
 		"non-matching parent directory": {
-			psp: &extensions.PodSecurityPolicy{
-				Spec: extensions.PodSecurityPolicySpec{
-					AllowedHostPaths: []extensions.AllowedHostPath{
-						{PathPrefix: "/foo/bar"},
-					},
-				},
+			allowedHostPaths: []extensions.AllowedHostPath{
+				{PathPrefix: "/foo/bar"},
 			},
-			path:   "/foo",
-			allows: false,
+			path:     "/foo",
+			expected: nil,
 		},
 	}
 
 	for k, v := range tests {
-		allows := AllowsHostVolumePath(v.psp, v.path)
-		if v.allows != allows {
-			t.Errorf("%s expected %t but got %t", k, v.allows, allows)
+		result := GetAllowedHostPath(v.allowedHostPaths, v.path)
+		if !reflect.DeepEqual(result, v.expected) {
+			t.Errorf("%s expected `%+v` but got `%+v`", k, v.expected, result)
 		}
 	}
 }
