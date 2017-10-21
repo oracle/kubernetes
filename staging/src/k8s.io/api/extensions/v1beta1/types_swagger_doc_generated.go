@@ -39,6 +39,7 @@ func (AllowedFlexVolume) SwaggerDoc() map[string]string {
 var map_AllowedHostPath = map[string]string{
 	"":           "defines the host volume conditions that will be enabled by a policy for pods to use. It requires the path prefix to be defined.",
 	"pathPrefix": "is the path prefix that the host volume must match. It does not support `*`. Trailing slashes are trimmed when validating the path prefix with a host path.\n\nExamples: `/foo` would allow `/foo`, `/foo/` and `/foo/bar` `/foo` would not allow `/food` or `/etc/foo`",
+	"readOnly":   "when set to true will force volumes matching the path prefix to run as read-only. If the container specifically requests to run with a non-read only volume that matches the path prefix then the PSP should deny the pod. If set to false the container may run with a read-only root volume if it wishes but it will not be forced to.",
 }
 
 func (AllowedHostPath) SwaggerDoc() map[string]string {

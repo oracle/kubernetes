@@ -357,7 +357,7 @@ func TestValidatePodSecurityContextFailures(t *testing.T) {
 		"failHostPathReadOnlyPSP": {
 			pod:           failHostPathReadOnlyPod,
 			psp:           failHostPathReadOnlyPSP,
-			expectedError: "must be read only",
+			expectedError: "must be read-only",
 		},
 		"failSafeSysctlFooPod with failNoSysctlAllowedSCC": {
 			pod:           failSafeSysctlFooPod,

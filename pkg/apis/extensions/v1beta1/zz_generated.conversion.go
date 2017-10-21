@@ -165,6 +165,7 @@ func Convert_extensions_AllowedFlexVolume_To_v1beta1_AllowedFlexVolume(in *exten
 
 func autoConvert_v1beta1_AllowedHostPath_To_extensions_AllowedHostPath(in *v1beta1.AllowedHostPath, out *extensions.AllowedHostPath, s conversion.Scope) error {
 	out.PathPrefix = in.PathPrefix
+	out.ReadOnly = in.ReadOnly
 	return nil
 }
 
@@ -175,6 +176,7 @@ func Convert_v1beta1_AllowedHostPath_To_extensions_AllowedHostPath(in *v1beta1.A
 
 func autoConvert_extensions_AllowedHostPath_To_v1beta1_AllowedHostPath(in *extensions.AllowedHostPath, out *v1beta1.AllowedHostPath, s conversion.Scope) error {
 	out.PathPrefix = in.PathPrefix
+	out.ReadOnly = in.ReadOnly
 	return nil
 }
 

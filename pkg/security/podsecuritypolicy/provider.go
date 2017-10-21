@@ -360,14 +360,14 @@ func (s *simpleProvider) isValidHostPort(port int32) bool {
 	return false
 }
 
-// hasReadOnlyContainerVolumeMount checks whether the containers volume with the given name is read only.
+// hasReadOnlyContainerVolumeMount checks whether the containers volume with the given name is read-only.
 func (s *simpleProvider) hasReadOnlyContainerVolumeMount(container *api.Container, volumeName string, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	for cvIdx, cv := range container.VolumeMounts {
 		if volumeName == cv.Name && !cv.ReadOnly {
 			allErrs = append(allErrs, field.Invalid(
 				fldPath.Child("volumeMounts").Index(cvIdx), cv.Name,
-				fmt.Sprintf("must be read only")))
+				fmt.Sprintf("must be read-only")))
 		}
 	}
 	return allErrs
