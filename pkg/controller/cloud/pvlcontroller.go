@@ -112,9 +112,9 @@ func (pvlc *PersistentVolumeLabelController) Run(threadiness int, stopCh <-chan 
 		return
 	}
 
-	// start up your worker threads based on threadiness.  Some controllers have multiple kinds of workers
+	// start up your worker threads based on threadiness. Some controllers have multiple kinds of workers
 	for i := 0; i < threadiness; i++ {
-		// runWorker will loop until "something bad" happens.  The .Until will then rekick the worker
+		// runWorker will loop until "something bad" happens. The .Until will then rekick the worker
 		// after one second
 		go wait.Until(pvlc.runWorker, time.Second, stopCh)
 	}
@@ -124,15 +124,15 @@ func (pvlc *PersistentVolumeLabelController) Run(threadiness int, stopCh <-chan 
 }
 
 func (pvlc *PersistentVolumeLabelController) runWorker() {
-	// hot loop until we're told to stop.  processNextWorkItem will automatically wait until there's work
+	// hot loop until we're told to stop. processNextWorkItem will automatically wait until there's work
 	// available, so we don't worry about secondary waits
 	for pvlc.processNextWorkItem() {
 	}
 }
 
-// processNextWorkItem deals with one key off the queue.  It returns false when it's time to quit.
+// processNextWorkItem deals with one key off the queue. It returns false when it's time to quit.
 func (pvlc *PersistentVolumeLabelController) processNextWorkItem() bool {
-	// pull the next work item from queue.  It should be a key we use to lookup something in a cache
+	// pull the next work item from queue. It should be a key we use to lookup something in a cache
 	keyObj, quit := pvlc.queue.Get()
 	if quit {
 		return false
@@ -141,20 +141,20 @@ func (pvlc *PersistentVolumeLabelController) processNextWorkItem() bool {
 	defer pvlc.queue.Done(keyObj)
 
 	key := keyObj.(string)
-	// do your work on the key.  This method will contains your "do stuff" logic
+	// do your work on the key. This method will contains your "do stuff" logic
 	err := pvlc.syncHandler(key)
 	if err == nil {
-		// if you had no error, tell the queue to stop tracking history for your key.  This will
+		// if you had no error, tell the queue to stop tracking history for your key. This will
 		// reset things like failure counts for per-item rate limiting
 		pvlc.queue.Forget(key)
 		return true
 	}
 
-	// there was a failure so be sure to report it.  This method allows for pluggable error handling
+	// there was a failure so be sure to report it. This method allows for pluggable error handling
 	// which can be used for things like cluster-monitoring
 	utilruntime.HandleError(fmt.Errorf("%v failed with : %v", key, err))
 
-	// since we failed, we should requeue the item to work on later.  This method will add a backoff
+	// since we failed, we should requeue the item to work on later. This method will add a backoff
 	// to avoid hotlooping on particular items (they're probably still not going to work right away)
 	// and overall controller protection (everything I've done is broken, this controller needs to
 	// calm down or it can starve other useful work) cases.
@@ -173,8 +173,9 @@ func (pvlc *PersistentVolumeLabelController) addLabels(key string) error {
 	volume, err := pvlc.volumeLister.Get(name)
 	if errors.IsNotFound(err) {
 		return nil
-	} else if err != nil {
-		return fmt.Errorf("error getting volume %s from informer: %v", name, err)
+	}
+	if err != nil {
+		return fmt.Errorf("error getting volume %q from informer: %v", name, err)
 	}
 
 	return pvlc.addLabelsToVolume(volume)
@@ -182,7 +183,7 @@ func (pvlc *PersistentVolumeLabelController) addLabels(key string) error {
 
 func (pvlc *PersistentVolumeLabelController) addLabelsToVolume(vol *v1.PersistentVolume) error {
 	var volumeLabels map[string]string
-	// Only add labels if in the list of initializers
+	// Only add labels if the next pending initializer.
 	if needsInitialization(vol.Initializers, initializerName) {
 		if labeler, ok := (pvlc.cloud).(cloudprovider.PVLabeler); ok {
 			labels, err := labeler.GetLabelsForVolume(vol)
@@ -265,16 +266,17 @@ func removeInitializer(initializers *metav1.Initializers, name string) *metav1.I
 	return &metav1.Initializers{Pending: updated}
 }
 
+// needsInitialization checks whether or not the PVL is the next pending initializer.
 func needsInitialization(initializers *metav1.Initializers, name string) bool {
-	hasInitializer := false
-
-	if initializers != nil {
-		for _, pending := range initializers.Pending {
-			if pending.Name == name {
-				hasInitializer = true
-				break
-			}
-		}
+	if initializers == nil {
+		return false
 	}
-	return hasInitializer
+
+	if len(initializers.Pending) == 0 {
+		return false
+	}
+
+	// There is at least one initializer still pending so check to
+	// see if the PVL is the next in line.
+	return initializers.Pending[0].Name == name
 }
