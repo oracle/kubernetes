@@ -313,11 +313,16 @@ func (cnc *CloudNodeController) MonitorNode() {
 }
 
 func (cnc *CloudNodeController) UpdateCloudNode(_, newObj interface{}) {
-	if _, ok := newObj.(*v1.Node); !ok {
+	node, ok := newObj.(*v1.Node)
+	if !ok {
 		utilruntime.HandleError(fmt.Errorf("unexpected object type: %v", newObj))
 		return
 	}
-	cnc.AddCloudNode(newObj)
+
+	cloudTaint := getCloudTaint(node.Spec.Taints)
+	if cloudTaint != nil {
+		cnc.AddCloudNode(newObj)
+	}
 }
 
 // This processes nodes that were added into the cluster, and cloud initialize them if appropriate
